@@ -153,9 +153,9 @@ void setup() {
   sensorADC = analogRead(POT);
   
   //LEDs
-  pinMode(ledrojo, OUTPUT);
-  pinMode(ledverde, OUTPUT);
-  pinMode(ledazul, OUTPUT);
+  pinMode(LED_ROJO, OUTPUT);
+  pinMode(LED_VERDE, OUTPUT);
+  pinMode(LED_AZUL, OUTPUT);
   apagarLEDs();
 
   //LCD
