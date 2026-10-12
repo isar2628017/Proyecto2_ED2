@@ -6,55 +6,188 @@
 
 #include "driver/gpio.h"
 #include <stdint.h>
+#include <Wire.h>
 #include <LiquidCrystal.h>
 
-#define ledrojo 32
-#define ledverde 33
-#define ledazul 25
+//LEDs
+#define LED_ROJO  17
+#define LED_VERDE 16
+#define LED_AZUL  4
 
+//Potenciómetro
 #define POT 34
 
-//Parte2
-//#define QUEUE_SIZE 1
+//SPI
+#define SPI_SCK  18
+#define SPI_MISO 19
+#define SPI_MOSI 23
+#define SPI_CS   5
 
-#define RS 15
-#define E 4
+#define QUEUE_SIZE 1
 
-#define LCD_D0 16
-#define LCD_D1 17
-#define LCD_D2 5
-#define LCD_D3 18
-#define LCD_D4 19
-#define LCD_D5 21
-#define LCD_D6 22
-#define LCD_D7 23
+ESP32SPISlave slave;
+uint8_t spi_tx[3] = {0, 0, 0};
+uint8_t spi_rx[3] = {0, 0, 0};
 
-LiquidCrystal lcd(RS, E, LCD_D0, LCD_D1, LCD_D2, LCD_D3, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
+//I2C
+#define I2C_DEV_ADDR 0x32
 
-char ultimoLED = 'G';   // solo prueba por ahora
+//LCD de 4 bits
+#define RS 32
+#define E  33
+#define D4 25
+#define D5 26
+#define D6 27
+#define D7 14
 
-//Parte2
-//uint8_t sensor;
-//uint8_t data;
-//ESP32SPISlave slave;
+LiquidCrystal lcd( RS, E, D4, D5, D6, D7);
+
+//Variables
+volatile uint16_t sensorADC = 0;
+volatile uint8_t comandoI2C = 0;
+
+char ultimoLED = '-';
+bool ledActivo = false;
+
+unsigned long tiempoInicioLED = 0;
+unsigned long tiempoLED = 0;
+
+int ledActual = -1;
+
+// Tiempos
+unsigned long tiempoLCD = 0;
+unsigned long tiempoADC = 0;
+
+//Funciones
+void apagarLEDs();
+void activarLED(uint8_t led, unsigned long tiempo);
+void actualizarLED();
+void actualizarLCD();
+
+void onReceive(int len);
+void onRequest();
+
+void apagarLEDs()  {
+  digitalWrite(LED_ROJO, LOW);
+  digitalWrite(LED_VERDE, LOW);
+  digitalWrite(LED_AZUL, LOW);
+}
+
+void activarLED(uint8_t led, unsigned long tiempo)  {
+  apagarLEDs();
+  ledActual = led;
+  tiempoLED = tiempo;
+  tiempoInicioLED = millis();
+
+  ledActivo = true;
+  if (led == 1)  {
+    digitalWrite(LED_ROJO, HIGH);
+    ultimoLED = 'R';
+    Serial.println("LED ROJO -> ON");
+  }
+  else if (led == 2)  {
+    digitalWrite(LED_VERDE, HIGH);
+    ultimoLED = 'G';
+    Serial.println("LED VERDE -> ON");
+  }
+  else if (led == 3)  {
+    digitalWrite(LED_AZUL, HIGH);
+    ultimoLED = 'B';
+    Serial.println("LED AZUL -> ON");
+  }
+}
+
+void actualizarLED()  {
+  if (!ledActivo)  {
+    return;
+  }
+  if (millis() - tiempoInicioLED >= tiempoLED)  {
+    apagarLEDs();
+    ledActivo = false;
+    ledActual = -1;
+    Serial.println("LED -> OFF");
+    Serial.println("Operacion SPI terminada");
+    Serial.println();
+  }
+}
+
+void actualizarLCD()  {
+  uint16_t valorADCraw = sensorADC;
+  // Convertir 12 8 bits
+  uint16_t valorADC = (valorADCraw * 255UL) / 4095UL;
+  // Calcular voltaje
+  float voltaje = valorADCraw * (3.3 / 4095.0);
+  //Fila1
+  lcd.setCursor(0, 0);
+  lcd.print("Volt");
+  lcd.setCursor(7, 0);
+  lcd.print("ADC");
+  lcd.setCursor(13, 0);
+  lcd.print("LED");
+
+  // Fila 2
+  lcd.setCursor(0, 1);
+  lcd.print("     ");
+  lcd.setCursor(0, 1);
+  lcd.print(voltaje, 2);
+  // Fila 2: ADC
+  lcd.setCursor(7, 1);
+  lcd.print("    ");
+  lcd.setCursor(7, 1);
+  lcd.print(valorADC);
+  // Ultimo LED
+  lcd.setCursor(14, 1);
+  lcd.print(" ");
+  lcd.setCursor(14, 1);
+  lcd.print(ultimoLED);
+}
+
 
 
 void setup() {
   Serial.begin(115200);
-
+  
+  //ADC
   pinMode(POT, INPUT);
-
+  analogReadResolution(12);
+  sensorADC = analogRead(POT);
+  
+  //LEDs
   pinMode(ledrojo, OUTPUT);
   pinMode(ledverde, OUTPUT);
   pinMode(ledazul, OUTPUT);
+  apagarLEDs();
 
+  //LCD
   lcd.begin(16, 2);
   lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Iniciando...");
 
-  //slave.setDataMode(SPI_MODE0);
-  //slave.setQueueSize(QUEUE_SIZE);
+  //SPI
+  slave.setDataMode(SPI_MODE0);
+  slave.setQueueSize(QUEUE_SIZE);
+  slave.begin(VSPI,SPI_SCK,SPI_MISO,SPI_MOSI,SPI_CS);
+  
+  Serial.println();
+  Serial.println("=============================");
+  Serial.println("ESP32 - PROYECTO 2");
+  Serial.println("=============================");
+  Serial.println();
 
-  //slave.begin(VSPI);
+  Serial.println("SPI SLAVE configurado:");
+  Serial.println();
+
+  //I2C
+  Wire.begin((uint8_t)I2C_DEV_ADDR);
+  Wire.onReceive(onReceive);
+  Wire.onRequest(onRequest);
+  Serial.print("I2C esclavo listo. Direccion: 0x");
+  Serial.println(I2C_DEV_ADDR, HEX);
+  delay(1000);
+  lcd.clear();
+  
+  actualizarLCD();
 }
 
 void loop() {
