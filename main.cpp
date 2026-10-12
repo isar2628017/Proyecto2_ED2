@@ -191,41 +191,78 @@ void setup() {
 }
 
 void loop() {
+  //ADC actualizar
+  if (millis() - tiempoADC >= 20)  {
+    tiempoADC = millis();
+    sensorADC = analogRead(POT);
+  }
 
-    int valorADCraw = analogRead(POT);
-    int valorADC = map(valorADCraw, 0, 4095, 0, 255);
+  //SPI
+  if (slave.hasTransactionsCompletedAndAllResultsHandled())  {
+    slave.queue(spi_tx,spi_rx,3);
+    slave.trigger();
+  }
+  if (slave.hasTransactionsCompletedAndAllResultsReady(QUEUE_SIZE))  {
+    slave.numBytesReceivedAll();
+    uint8_t ledRecibido = spi_rx[0];
+    uint16_t tiempoRecibido =  ((uint16_t)spi_rx[1] << 8) |spi_rx[2];
 
-    float voltaje = valorADCraw * (3.3 / 4095.0);
+    //Si se recibe
+    Serial.println();
+    Serial.println("=============================");
+    Serial.println("COMANDO SPI RECIBIDO");
+    Serial.println("=============================");
 
+    Serial.print("LED: ");
+    Serial.println(ledRecibido);
+    Serial.print("MSB: ");
+    Serial.println(spi_rx[1]);
+    Serial.print("LSB: ");
+    Serial.println(spi_rx[2]);
+    Serial.print("Tiempo: ");
+    Serial.print(tiempoRecibido);
+    Serial.println(" ms");
 
-    // LCD - Titulos
-    lcd.setCursor(0, 0);
-    lcd.print("Volt");
+    //Recibe valor de LED
+    if (ledRecibido >= 1 && ledRecibido <= 3)  {
+      if (tiempoRecibido > 0)  {
+        Serial.println("Comando valido");
+        activarLED(ledRecibido, tiempoRecibido);
+      }
+      else  {
+        Serial.println("ERROR: tiempo invalido");
+      }
+    }
+    else  {
+      Serial.println("ERROR: LED invalido");
+    }
+    Serial.println();
+  }
 
-    lcd.setCursor(7, 0);
-    lcd.print("ADC");
-
-    lcd.setCursor(13, 0);
-    lcd.print("LED");
-
-
-    // Valores
-
-    lcd.setCursor(0, 1);
-    lcd.print("     ");
-    lcd.setCursor(0, 1);
-    lcd.print(voltaje, 2);
-
-    lcd.setCursor(7, 1);
-    lcd.print("    ");
-    lcd.setCursor(7, 1);
-    lcd.print(valorADC);
-
-    lcd.setCursor(14, 1);
-    lcd.print(" ");
-    lcd.setCursor(14, 1);
-    lcd.print(ultimoLED);
-
-
-    delay(200);
+  actualizarLED();
+  //Actualizar LCD
+  if (millis() - tiempoLCD >= 200)  {
+    tiempoLCD = millis();
+    actualizarLCD();
+  }
+  
 }
+
+//I2C
+void onRequest()  {
+    uint16_t valorADC = sensorADC;
+
+    uint8_t datos[2];
+    datos[0] = valorADC & 0xFF;
+    datos[1] = (valorADC >> 8) & 0xFF;
+
+    Wire.write(datos, 2);
+}
+//Recibe comando de I2C
+void onReceive(int len)  {
+    while (Wire.available())
+    {
+        comandoI2C = Wire.read();
+    }
+}
+
