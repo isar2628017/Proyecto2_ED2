@@ -231,6 +231,7 @@ void obtenerMedicionI2C(void)	{
     uint16_t adc8bits;
     uint8_t intento;
     uint8_t lecturaValida = 0;
+	float voltaje;
 
     estado = HAL_I2C_IsDeviceReady(&hi2c3,(uint16_t)(deviceAddress << 1),10,1000);
 
@@ -293,8 +294,12 @@ void obtenerMedicionI2C(void)	{
 
     /* Convertir a escala de 0 a 255 */
     adc8bits = (adcRecibido * 255UL) / 4095UL;
-    sprintf(mensaje, "ADC: %u\r\n", (unsigned int)adc8bits);
-    HAL_UART_Transmit(&huart2, (uint8_t *)mensaje, strlen(mensaje), HAL_MAX_DELAY);
+	voltaje = adcRecibido * (3.3f / 4095.0f);
+    sprintf(mensaje,
+        "ADC: %u/255\r\nVoltaje: %.2f V\r\n",
+        (unsigned int)adc8bits,
+        voltaje);
+	HAL_UART_Transmit(&huart2, (uint8_t *)mensaje, strlen(mensaje), HAL_MAX_DELAY);
 }
 
 
