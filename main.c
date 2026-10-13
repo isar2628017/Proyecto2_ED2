@@ -294,12 +294,12 @@ void obtenerMedicionI2C(void)	{
 
     /* Convertir a escala de 0 a 255 */
     adc8bits = (adcRecibido * 255UL) / 4095UL;
-	voltaje = adcRecibido * (3.3f / 4095.0f);
-    sprintf(mensaje,
-        "ADC: %u/255\r\nVoltaje: %.2f V\r\n",
-        (unsigned int)adc8bits,
-        voltaje);
-	HAL_UART_Transmit(&huart2, (uint8_t *)mensaje, strlen(mensaje), HAL_MAX_DELAY);
+	/* Calcular el voltaje */
+    uint16_t voltajeCent = (adcRecibido * 330UL) / 4095UL;
+    /* Mostrar ADC y voltaje*/
+    sprintf(mensaje, "ADC: %u\r\nVoltaje: %u.%02u V\r\n", (unsigned int)adc8bits, (unsigned int)(voltajeCent / 100),
+            (unsigned int)(voltajeCent % 100));
+    HAL_UART_Transmit(&huart2, (uint8_t *)mensaje, strlen(mensaje), HAL_MAX_DELAY);
 }
 
 
